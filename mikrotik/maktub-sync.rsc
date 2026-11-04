@@ -1,12 +1,10 @@
 # =====================================================================
 # Maktub — router -> dashboard sync (chunked)
 # ---------------------------------------------------------------------
-# Sends used vouchers (active now OR with a Mikhmon expiry comment) plus
-# the active-session list. Chunks of 150 users keep each request small
-# enough for RouterOS fetch even on 1,000+ user routers.
-#
-# Unused vouchers are skipped, exactly like the London/Alimu rule: a
-# voucher appears on the dashboard after its first login.
+# Sends every non-default voucher (used and unused) plus the active-session
+# list. The server marks a voucher "used" only after first login or when
+# Mikhmon has written an expiry timestamp; unused ones are counted but not
+# listed. Chunks of 150 keep each request small on 1,000+ user routers.
 #
 # INSTALL (per router):
 #   1. Edit apiKey below with THAT network's key.
@@ -18,12 +16,10 @@
 :local apiUrl "https://zmolotveyvkplfrgrqqw.supabase.co/functions/v1/maktub/api/mikhmon-sync"
 :local chunkSize 150
 
-:local act "|"
 :local actLines ""
 :foreach a in=[/ip hotspot active find] do={
     :local au [/ip hotspot active get $a user]
     :if ([:len $au] > 0) do={
-        :set act ($act . $au . "|")
         :set actLines ($actLines . "A|" . $au . "\n")
     }
 }
@@ -34,11 +30,9 @@
 :foreach i in=[/ip hotspot user find] do={
     :local name [/ip hotspot user get $i name]
     :local com  [/ip hotspot user get $i comment]
-    :local isActive false
-    :if ([:typeof [:find $act ("|" . $name . "|")]] != "nil") do={ :set isActive true }
-    :if (($isActive = true) or ([:len $com] > 0)) do={
+    :local prof [/ip hotspot user get $i profile]
+    :if ($prof != "default") do={
         :local pass [/ip hotspot user get $i password]
-        :local prof [/ip hotspot user get $i profile]
         :local mac  [/ip hotspot user get $i mac-address]
         :local dis  [/ip hotspot user get $i disabled]
         :local lim  [/ip hotspot user get $i limit-uptime]

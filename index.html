@@ -184,6 +184,7 @@
       <div class="pay-break" id="payBreak"></div>
       <button class="btn btn-primary btn-block" id="payBtn">Pay now</button>
       <div class="err" id="payErr"></div>
+      <button class="btn btn-block hidden" id="payBack" style="margin-top:10px">← Back to dashboard</button>
       <button class="btn btn-block" id="payLogout" style="margin-top:10px;background:transparent;border-color:transparent;color:var(--faint)">Sign out</button>
     </div>
   </div>
@@ -207,6 +208,10 @@
   </div>
 
   <main>
+    <div id="dueBanner" class="hidden" style="margin-bottom:20px;padding:14px 18px;border:1px solid rgba(251,191,36,.35);background:var(--amber-soft);border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div><strong style="color:var(--amber)">Licence due</strong> <span id="dueText" style="color:var(--muted);font-size:13px"></span></div>
+      <button class="btn btn-primary" id="duePayBtn">Pay now</button>
+    </div>
     <!-- CARDS -->
     <section id="cardsView">
       <div class="page-head">
@@ -321,18 +326,24 @@ function showLogin() {
   sessionStorage.removeItem("maktub_sid"); sid = "";
   show("loginView");
 }
-function showPay(data) {
+function showPay(data, canBack = false) {
   if (state.timer) clearInterval(state.timer);
   const n = data?.network_count ?? 2;
   const amount = data?.amount_due ?? n * 5000;
+  const active = data?.active === true ||
+    (data?.active !== false && data?.paid_until && new Date(data.paid_until).getTime() > Date.now());
   $("payAmount").textContent = money(amount);
+  $("payLead").textContent = active
+    ? "Your licence is active. You can renew early."
+    : "Your dashboard and networks are locked until the licence is renewed.";
   $("payDue").textContent = data?.paid_until
-    ? "Licence expired " + ago(data.paid_until) + "."
+    ? (active ? "Active until " + when(data.paid_until) + "." : "Licence expired " + ago(data.paid_until) + ".")
     : "Your licence has expired.";
   $("payBreak").innerHTML =
     "<div><span>" + n + " networks × ₦5,000</span><span>" + money(amount) + "</span></div>" +
     "<div><span>Billing date</span><span>10th of every month</span></div>" +
     "<div><span>Grace period</span><span>None</span></div>";
+  $("payBack").classList.toggle("hidden", !canBack);
   show("payView");
 }
 
@@ -383,6 +394,13 @@ async function boot() {
   $("cardsSub").textContent =
     d.tenant.network_count + " network" + (d.tenant.network_count === 1 ? "" : "s") +
     " · licence active until " + when(d.tenant.paid_until);
+  const due = !d.tenant || d.tenant.status !== "active" ||
+    new Date(d.tenant.paid_until).getTime() <= Date.now();
+  $("dueBanner").classList.toggle("hidden", !due);
+  if (due) {
+    $("dueText").textContent = "— " + money(d.tenant.amount_due) +
+      " for " + d.tenant.network_count + " network(s)";
+  }
   renderCards(d.networks);
   show("appView");
   state.slug = "";
@@ -422,6 +440,7 @@ function renderCards(nets) {
           <div class="metric"><b style="color:var(--red)">${n.expired}</b><span>Expired</span></div>
           <div class="metric"><b>${n.total}</b><span>Total</span></div>
         </div>
+        <div style="margin-top:10px;font-size:11px;color:var(--faint)">${n.unused} unused voucher${n.unused === 1 ? "" : "s"}</div>
         <div class="net-foot">
           <span>Today <strong>${money(n.revenue_today)}</strong></span>
           <span>${money(n.revenue_month)} this month</span>
@@ -458,7 +477,8 @@ async function refreshNetwork(slug, quiet = false) {
       ${stat("online", "Online now", s.online, "in the last 3 minutes")}
       ${stat("", "Active", s.active, "valid vouchers")}
       ${stat("expired", "Expired", s.expired, "ended vouchers")}
-      ${stat("", "Total", s.total, "all time")}
+      ${stat("", "Total", s.total, "all vouchers")}
+      ${stat("", "Unused", s.unused, "not logged in")}
       ${stat("revenue", "Today", money(s.revenue_today), "voucher revenue")}
       ${stat("", "This month", money(s.revenue_month), money(s.revenue_week) + " this week")}
     `;
@@ -551,6 +571,13 @@ $("payBtn").addEventListener("click", async () => {
     btn.disabled = false; btn.textContent = "Pay now";
   }
 });
+$("duePayBtn").addEventListener("click", async () => {
+  try {
+    const s = await api("/api/subscription/status");
+    showPay(s, true);
+  } catch (ex) { toast(ex.message); }
+});
+$("payBack").addEventListener("click", () => { boot().catch(() => {}); });
 
 /* ---------- password ---------- */
 $("pwBtn").addEventListener("click", () => { $("pwModal").classList.remove("hidden"); $("pwErr").textContent = ""; });

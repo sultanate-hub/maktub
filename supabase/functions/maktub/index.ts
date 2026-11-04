@@ -218,6 +218,14 @@ function gatePayload(t: any, count: number): Record<string, unknown> {
 
 // ---------- plans / router parsing ----------
 const PAID_PLANS = new Set(["24hr", "3d", "5d", "7d", "14d", "30d"]);
+const PLAN_HOURS: Record<string, number> = {
+  "24hr": 24,
+  "3d": 72,
+  "5d": 120,
+  "7d": 168,
+  "14d": 336,
+  "30d": 720,
+};
 function mapPlan(profile: unknown): string {
   const p = String(profile ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-");
   if (["24hr", "24hrs", "24-hour", "24-hours", "daily", "1d"].includes(p)) return "24hr";
@@ -551,15 +559,17 @@ function statNumbers(row: any) {
     expired: Number(row?.expired || 0),
     active: Number(row?.active || 0),
     total: Number(row?.total || 0),
+    unused: Number(row?.unused || 0),
     revenue_today: Number(row?.revenue_today || 0),
     revenue_week: Number(row?.revenue_week || 0),
     revenue_month: Number(row?.revenue_month || 0),
   };
 }
-async function handleNetworks(req: Request): Promise<Response> {
+async function handleNetworks(req: Request, session: any): Promise<Response> {
   const t = await getTenant();
   const nets = await activeNetworks();
-  if (!licenceActive(t)) return json(gatePayload(t, nets.length), 402, req);
+  const privileged = session?.role === "super_admin";
+  if (!privileged && !licenceActive(t)) return json(gatePayload(t, nets.length), 402, req);
   const stats = await sbRpc("maktub_network_stats");
   const byId = new Map((stats || []).map((s: any) => [String(s.network_id), s]));
   return json({
@@ -580,10 +590,11 @@ async function handleNetworks(req: Request): Promise<Response> {
     })),
   }, 200, req);
 }
-async function handleNetwork(req: Request, slug: string, part?: string): Promise<Response> {
+async function handleNetwork(req: Request, slug: string, part?: string, session?: any): Promise<Response> {
   const t = await getTenant();
   const nets = await activeNetworks();
-  if (!licenceActive(t)) return json(gatePayload(t, nets.length), 402, req);
+  const privileged = session?.role === "super_admin";
+  if (!privileged && !licenceActive(t)) return json(gatePayload(t, nets.length), 402, req);
   const rows = await sbGet("networks", { slug: `eq.${slug}`, select: "*", limit: "1" });
   const network = rows[0];
   if (!network || network.status !== "active") return json({ error: "Network not found" }, 404, req);
@@ -668,7 +679,7 @@ async function handleSync(req: Request): Promise<Response> {
 
   const existing = await sbGet("mikrotik_users", {
     network_id: `eq.${network.id}`,
-    select: "id,username,first_login_at,last_seen,expires_at,status",
+    select: "id,username,first_login_at,last_seen,expires_at,status,used",
     limit: "10000",
   });
   const byName = new Map<string, any>(existing.map((r: any) => [String(r.username), r]));
@@ -682,30 +693,48 @@ async function handleSync(req: Request): Promise<Response> {
   for (const u of payload.users) {
     if (u.profile === "default" || !u.profile) { skipped++; continue; }
     const old = byName.get(u.name);
-    let expires = parseMikhmonExpiry(u.comment);
-    if (!expires && u.limit) {
+    const plan = mapPlan(u.profile);
+    const seen = activeSet.has(u.name);
+    const commentExpiry = parseMikhmonExpiry(u.comment);
+    const oldUsed = !!old?.used || !!old?.first_login_at;
+
+    let expires: string | null = commentExpiry || old?.expires_at || null;
+    // Only derive an expiry from limit-uptime for vouchers that have actually
+    // been used. Unused vouchers also carry a limit-uptime; deriving an expiry
+    // for them would incorrectly mark them as used.
+    if (!expires && (seen || oldUsed) && u.limit) {
       const limit = routerSeconds(u.limit);
       const uptime = routerSeconds(u.uptime);
       if (limit !== null && uptime !== null && limit > 0) {
         expires = new Date(now.getTime() + Math.max(0, limit - uptime) * 1000).toISOString();
       }
     }
-    if (!expires && old?.expires_at) expires = old.expires_at;
+
+    const used = seen || !!commentExpiry || oldUsed;
     const disabled = u.disabled || u.limit === "1s";
-    const expired = disabled || (expires !== null && new Date(expires).getTime() <= now.getTime());
-    const seen = activeSet.has(u.name);
-    // London rule: only vouchers that have been used (first login) appear.
-    if (!seen && !expires && !old) { skipped++; continue; }
+    const expired = used && (disabled ||
+      (expires !== null && new Date(expires).getTime() <= now.getTime()));
+
+    // Activation time: for priced plans, expiry - duration is the actual
+    // voucher start, so today/week/month revenue are genuinely different.
+    let first: string | null = old?.first_login_at || null;
+    const hours = PLAN_HOURS[plan];
+    if (used && expires && hours) {
+      first = new Date(new Date(expires).getTime() - hours * 3600 * 1000).toISOString();
+    }
+    if (used && !first) first = nowIso;
+
     rows.push({
       network_id: network.id,
       username: u.name,
       password: u.password,
       profile: u.profile,
-      plan: mapPlan(u.profile),
+      plan,
       mac_address: u.mac || null,
-      expires_at: expires,
+      expires_at: used ? expires : null,
       status: expired ? "expired" : "active",
-      first_login_at: old?.first_login_at || (seen ? nowIso : null),
+      used,
+      first_login_at: used ? first : null,
       last_seen: seen ? nowIso : (old?.last_seen ?? null),
       disabled,
       comment: u.comment,
@@ -860,7 +889,7 @@ Deno.serve(async (req: Request) => {
     const session = await currentSession(req);
     if (!session) return json({ error: "Unauthorized" }, 401, req);
 
-    if (path === "/api/networks" && req.method === "GET") return await handleNetworks(req);
+    if (path === "/api/networks" && req.method === "GET") return await handleNetworks(req, session);
     if (path === "/api/logout" && req.method === "POST") return await handleLogout(req, session);
     if (path === "/api/change-password" && req.method === "POST") {
       return await handleChangePassword(req, session);
@@ -868,7 +897,7 @@ Deno.serve(async (req: Request) => {
 
     const m = path.match(/^\/api\/network\/([^/]+)(?:\/(users|activity))?$/);
     if (m && req.method === "GET") {
-      return await handleNetwork(req, decodeURIComponent(m[1]), m[2]);
+      return await handleNetwork(req, decodeURIComponent(m[1]), m[2], session);
     }
 
     return json({ error: "Not found" }, 404, req);

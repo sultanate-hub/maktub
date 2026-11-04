@@ -726,21 +726,10 @@ async function handleSync(req: Request): Promise<Response> {
     });
   }
 
-  // Full sync: users no longer on the router become expired (kept for history).
-  let removed = 0;
-  if (payload.full) {
-    const present = new Set(rows.map((r) => r.username));
-    const missingIds = existing
-      .filter((r: any) => !present.has(String(r.username)) && r.status !== "expired")
-      .map((r: any) => r.id);
-    for (let i = 0; i < missingIds.length; i += 200) {
-      await sbPatch(
-        `mikrotik_users?id=in.(${missingIds.slice(i, i + 200).join(",")})`,
-        { status: "expired", updated_at: nowIso },
-      );
-    }
-    removed = missingIds.length;
-  }
+  // Never delete or expire users just because they are absent from a payload:
+  // the router sends used vouchers in chunks, and Mikhmon rows are kept for
+  // history until their own expiry passes. This makes chunked syncs safe.
+  const removed = 0;
 
   const expiredByTime = await sbRpc("maktub_expire_users");
   await sbPatch(`networks?id=eq.${network.id}`, { last_sync: nowIso });

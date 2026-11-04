@@ -5,7 +5,7 @@ No customer payments: users are synced from the routers. The only money flow is 
 owner's dashboard subscription — **₦5,000 per network per month, billed on the 10th,
 no grace period**.
 
-- **Dashboard:** https://betelgeuse99.github.io/maktub-backend/
+- **Dashboard:** https://maktub.dreamhatcher.ink/
 - **API:** https://zmolotveyvkplfrgrqqw.supabase.co/functions/v1/maktub
 - **Supabase project:** `zmolotveyvkplfrgrqqw` (eu-west-1)
 - **Squad account:** Dream Hatcher Tech (`78TR887Y`), `pass_charge:true`

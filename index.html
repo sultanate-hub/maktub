@@ -482,7 +482,8 @@ async function refreshNetwork(slug, quiet = false) {
       ${stat("", "Total", s.total, "all vouchers")}
       ${stat("", "Unused", s.unused, "not logged in")}
       ${stat("revenue", "Today", money(s.revenue_today), "voucher revenue")}
-      ${stat("", "This month", money(s.revenue_month), money(s.revenue_week) + " this week")}
+      ${stat("", "Last 7 days", money(s.revenue_week), "rolling window")}
+      ${stat("", "This month", money(s.revenue_month), "since 1 " + new Date().toLocaleString("en-NG", { month: "short" }))}
     `;
     if (!quiet) { await loadUsers(1); await loadActivity(); }
   } catch (ex) {

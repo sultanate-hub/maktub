@@ -251,7 +251,7 @@
           <div class="panel-head">
             <div class="panel-title">Users</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <div class="search-wrap"><span class="search-ico">🔍</span><input class="search" id="search" type="search" placeholder="Search user or MAC…" autocomplete="off" spellcheck="false"></div>
+              <div class="search-wrap"><span class="search-ico">🔍</span><input class="search" id="search" type="search" placeholder="Search user or MAC…" autocomplete="off" spellcheck="false" readonly></div>
               <div class="tabs" id="statusTabs">
                 <button class="tab active" data-status="all">All</button>
                 <button class="tab" data-status="online">Online</button>
@@ -335,9 +335,10 @@ function show(id) {
   $(id).classList.remove("hidden");
 }
 function showLogin() {
-  if (state.timer) clearInterval(state.timer);
-  sessionStorage.removeItem("maktub_sid"); sid = "";
-  show("loginView");
+  sessionStorage.removeItem("maktub_sid");
+  // Reload so the login form is rebuilt and the browser cannot autofill a
+  // stale hidden username/password pair into the dashboard.
+  location.href = location.pathname;
 }
 function showPay(data, canBack = false) {
   if (state.timer) clearInterval(state.timer);
@@ -357,6 +358,7 @@ function showPay(data, canBack = false) {
     "<div><span>Billing date</span><span>10th of every month</span></div>" +
     "<div><span>Grace period</span><span>None</span></div>";
   $("payBack").classList.toggle("hidden", !canBack);
+  document.getElementById("loginView")?.remove();
   show("payView");
 }
 
@@ -416,6 +418,7 @@ async function boot() {
   }
   renderCards(d.networks);
   show("appView");
+  document.getElementById("loginView")?.remove();
   state.slug = "";
   $("cardsView").classList.remove("hidden");
   $("networkView").classList.add("hidden");
@@ -469,6 +472,7 @@ async function openNetwork(slug) {
   state.slug = slug; state.page = 1; state.status = "all"; state.search = "";
   searchTyped = false;
   $("search").value = "";
+  $("search").readOnly = true;
   startAutofillGuard();
   document.querySelectorAll("#statusTabs .tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.status === "all"));
@@ -578,11 +582,17 @@ function startAutofillGuard() {
 function stopAutofillGuard() {
   if (autofillTimer) { clearInterval(autofillTimer); autofillTimer = null; }
 }
-userSearchEl.addEventListener("keydown", () => { searchTyped = true; stopAutofillGuard(); });
+userSearchEl.addEventListener("keydown", (e) => {
+  const nav = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", "Tab", "Escape", "Shift", "Control", "Alt", "Meta"]);
+  if (nav.has(e.key)) return; // scrolling/navigation must not stop the autofill guard
+  searchTyped = true;
+  stopAutofillGuard();
+});
 userSearchEl.addEventListener("paste", () => { searchTyped = true; stopAutofillGuard(); });
 userSearchEl.addEventListener("focus", () => {
   // Chrome/Edge sometimes inject the saved username ("admin") here. Only a
   // value the user actually typed is allowed to filter the table.
+  userSearchEl.readOnly = false;
   if (!searchTyped && userSearchEl.value) {
     userSearchEl.value = "";
     state.search = "";

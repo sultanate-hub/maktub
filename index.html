@@ -88,6 +88,7 @@
   .stat b{display:block;font-size:28px;font-weight:800;margin-top:12px;letter-spacing:-.03em}
   .stat small{color:var(--faint);font-size:11px}
   .stat.online b{color:var(--green)} .stat.expired b{color:var(--red)} .stat.revenue b{color:var(--amber)}
+  .stat.day b{color:var(--amber)} .stat.week b{color:var(--cyan)} .stat.month b{color:var(--violet)}
   .panels{display:grid;grid-template-columns:1.65fr 1fr;gap:18px}
   @media(max-width:980px){.panels{grid-template-columns:1fr}}
   .panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
@@ -240,7 +241,7 @@
           <div class="panel-head">
             <div class="panel-title">Users</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <input class="search" id="userSearch" type="search" name="maktub-user-search" placeholder="Search user or MAC…" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <input class="search" id="userSearch" type="search" name="maktub-user-search" placeholder="Search user or MAC…" autocomplete="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
               <div class="tabs" id="statusTabs">
                 <button class="tab active" data-status="all">All</button>
                 <button class="tab" data-status="online">Online</button>
@@ -444,8 +445,8 @@ function renderCards(nets) {
         </div>
         <div style="margin-top:10px;font-size:11px;color:var(--faint)">${n.unused} unused voucher${n.unused === 1 ? "" : "s"}</div>
         <div class="net-foot">
-          <span>Today <strong>${money(n.revenue_today)}</strong></span>
-          <span>${money(n.revenue_month)} this month</span>
+          <span>Today <strong style="color:var(--amber)">${money(n.revenue_today)}</strong></span>
+          <span style="color:var(--violet)">${money(n.revenue_month)} this month</span>
         </div>
       </div>`;
   }).join("");
@@ -456,6 +457,7 @@ function renderCards(nets) {
 /* ---------- network ---------- */
 async function openNetwork(slug) {
   state.slug = slug; state.page = 1; state.status = "all"; state.search = "";
+  searchTyped = false;
   $("userSearch").value = "";
   document.querySelectorAll("#statusTabs .tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.status === "all"));
@@ -481,9 +483,9 @@ async function refreshNetwork(slug, quiet = false) {
       ${stat("expired", "Expired", s.expired, "ended vouchers")}
       ${stat("", "Total", s.total, "all vouchers")}
       ${stat("", "Unused", s.unused, "not logged in")}
-      ${stat("revenue", "Today", money(s.revenue_today), "voucher revenue")}
-      ${stat("", "Last 7 days", money(s.revenue_week), "rolling window")}
-      ${stat("", "This month", money(s.revenue_month), "since 1 " + new Date().toLocaleString("en-NG", { month: "short" }))}
+      ${stat("day", "Today", money(s.revenue_today), "voucher revenue")}
+      ${stat("week", "Last 7 days", money(s.revenue_week), "rolling window")}
+      ${stat("month", "This month", money(s.revenue_month), "since 1 " + new Date().toLocaleString("en-NG", { month: "short" }))}
     `;
     if (!quiet) { await loadUsers(1); await loadActivity(); }
   } catch (ex) {
@@ -550,7 +552,21 @@ $("refreshBtn").addEventListener("click", () => state.slug ? refreshNetwork(stat
 $("prevPage").addEventListener("click", () => { if (state.page > 1) loadUsers(state.page - 1); });
 $("nextPage").addEventListener("click", () => { if (state.page < state.pages) loadUsers(state.page + 1); });
 let searchTimer = null;
-$("userSearch").addEventListener("input", (e) => {
+let searchTyped = false;
+const userSearchEl = $("userSearch");
+userSearchEl.addEventListener("keydown", () => { searchTyped = true; });
+userSearchEl.addEventListener("paste", () => { searchTyped = true; });
+userSearchEl.addEventListener("focus", () => {
+  // Chrome/Edge sometimes inject the saved username ("admin") here. Only a
+  // value the user actually typed is allowed to filter the table.
+  if (!searchTyped && userSearchEl.value) {
+    userSearchEl.value = "";
+    state.search = "";
+    loadUsers(1);
+  }
+});
+userSearchEl.addEventListener("input", (e) => {
+  if (!searchTyped) { e.target.value = ""; return; }
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { state.search = e.target.value.trim(); loadUsers(1); }, 350);
 });
@@ -607,10 +623,13 @@ function esc(s) {
 /* ---------- start ---------- */
 (async () => {
   const params = new URLSearchParams(location.search);
-  if (params.get("subscribed")) setTimeout(() => toast("Payment received — refreshing…"), 400);
+  const subscribed = params.get("subscribed");
+  if (subscribed) history.replaceState({}, "", location.pathname);
   if (!sid) { show("loginView"); return; }
-  try { await boot(); }
-  catch (ex) {
+  try {
+    await boot();
+    if (subscribed) setTimeout(() => toast("Payment received — refreshing…"), 400);
+  } catch (ex) {
     if (ex.message === "subscription") return;
     show("loginView");
   }

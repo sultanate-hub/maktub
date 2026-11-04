@@ -250,7 +250,7 @@
             <div class="panel-title">Users</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
               <button class="search search-toggle" id="searchToggle" type="button">🔍 Search users…</button>
-              <input class="search hidden" id="userSearch" type="search" name="maktub-user-search" placeholder="Search user or MAC…" autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
+              <input class="search hidden" id="userSearch" type="search" name="maktub-user-filter-v2" placeholder="Search user or MAC…" autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
               <div class="tabs" id="statusTabs">
                 <button class="tab active" data-status="all">All</button>
                 <button class="tab" data-status="online">Online</button>
@@ -470,6 +470,7 @@ async function openNetwork(slug) {
   $("userSearch").value = "";
   $("userSearch").classList.add("hidden");
   $("searchToggle").classList.remove("hidden");
+  startAutofillGuard();
   document.querySelectorAll("#statusTabs .tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.status === "all"));
   $("cardsView").classList.add("hidden");
@@ -575,7 +576,20 @@ $("prevPage").addEventListener("click", () => { if (state.page > 1) loadUsers(st
 $("nextPage").addEventListener("click", () => { if (state.page < state.pages) loadUsers(state.page + 1); });
 let searchTimer = null;
 let searchTyped = false;
+let autofillTimer = null;
 const userSearchEl = $("userSearch");
+function startAutofillGuard() {
+  if (autofillTimer) clearInterval(autofillTimer);
+  autofillTimer = setInterval(() => {
+    if (!searchTyped && userSearchEl.value) {
+      userSearchEl.value = "";
+      state.search = "";
+    }
+  }, 250);
+}
+function stopAutofillGuard() {
+  if (autofillTimer) { clearInterval(autofillTimer); autofillTimer = null; }
+}
 $("searchToggle").addEventListener("click", () => {
   $("searchToggle").classList.add("hidden");
   const el = $("userSearch");
@@ -583,10 +597,11 @@ $("searchToggle").addEventListener("click", () => {
   el.value = "";
   state.search = "";
   searchTyped = false;
+  startAutofillGuard();
   setTimeout(() => el.focus(), 10);
 });
-userSearchEl.addEventListener("keydown", () => { searchTyped = true; });
-userSearchEl.addEventListener("paste", () => { searchTyped = true; });
+userSearchEl.addEventListener("keydown", () => { searchTyped = true; stopAutofillGuard(); });
+userSearchEl.addEventListener("paste", () => { searchTyped = true; stopAutofillGuard(); });
 userSearchEl.addEventListener("focus", () => {
   // Chrome/Edge sometimes inject the saved username ("admin") here. Only a
   // value the user actually typed is allowed to filter the table.
@@ -601,6 +616,7 @@ userSearchEl.addEventListener("input", (e) => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => { state.search = e.target.value.trim(); loadUsers(1); }, 350);
 });
+startAutofillGuard();
 document.querySelectorAll("#statusTabs .tab").forEach((t) => t.addEventListener("click", () => {
   document.querySelectorAll("#statusTabs .tab").forEach((x) => x.classList.remove("active"));
   t.classList.add("active");

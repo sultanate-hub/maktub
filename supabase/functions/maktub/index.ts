@@ -275,9 +275,16 @@ interface SyncUser {
   uptime: string;
   comment: string;
 }
-function parseSyncBody(raw: string, isJson: boolean): { users: SyncUser[]; active: string[]; full: boolean } {
+interface SyncActive {
+  name: string;
+  mac: string;
+  ip: string;
+  uptime: string;
+  idle: string;
+}
+function parseSyncBody(raw: string, isJson: boolean): { users: SyncUser[]; active: SyncActive[]; full: boolean } {
   const users: SyncUser[] = [];
-  const active: string[] = [];
+  const active: SyncActive[] = [];
   let full = true;
   if (isJson) {
     const body = JSON.parse(raw || "{}");
@@ -293,15 +300,37 @@ function parseSyncBody(raw: string, isJson: boolean): { users: SyncUser[]; activ
         comment: String(u.comment ?? ""),
       });
     }
-    for (const a of body.active || []) active.push(String(a));
+    for (const a of body.active || []) {
+      if (typeof a === "string") {
+        active.push({ name: a, mac: "", ip: "", uptime: "", idle: "" });
+      } else {
+        active.push({
+          name: String(a.name ?? ""),
+          mac: String(a.mac ?? a["mac-address"] ?? "").toUpperCase(),
+          ip: String(a.ip ?? a.address ?? ""),
+          uptime: String(a.uptime ?? ""),
+          idle: String(a["idle-time"] ?? a.idle ?? ""),
+        });
+      }
+    }
     if (body.full === false) full = false;
-    return { users: users.filter((u) => u.name), active, full };
+    return { users: users.filter((u) => u.name), active: active.filter((a) => a.name), full };
   }
   for (const line of raw.split("\n")) {
     const clean = line.replace(/\r$/, "");
     if (clean.length < 2) continue;
     if (clean.startsWith("A|")) {
-      active.push(clean.slice(2).trim());
+      const p = clean.split("|");
+      const name = String(p[1] ?? "").trim();
+      if (name) {
+        active.push({
+          name,
+          mac: String(p[2] ?? "").toUpperCase(),
+          ip: String(p[3] ?? ""),
+          uptime: String(p[4] ?? ""),
+          idle: String(p[5] ?? ""),
+        });
+      }
       continue;
     }
     if (clean.startsWith("F|")) {
@@ -679,11 +708,12 @@ async function handleSync(req: Request): Promise<Response> {
 
   const existing = await sbGet("mikrotik_users", {
     network_id: `eq.${network.id}`,
-    select: "id,username,first_login_at,last_seen,expires_at,status,used",
+    select: "id,username,first_login_at,last_seen,expires_at,status,used,mac_address",
     limit: "10000",
   });
   const byName = new Map<string, any>(existing.map((r: any) => [String(r.username), r]));
-  const activeSet = new Set(payload.active.map((x) => String(x)));
+  const activeSet = new Set(payload.active.map((x) => x.name));
+  const activeInfo = new Map(payload.active.map((x) => [x.name, x]));
   const prices = (network.plan_prices || {}) as Record<string, number>;
   const now = new Date();
   const nowIso = now.toISOString();
@@ -694,7 +724,10 @@ async function handleSync(req: Request): Promise<Response> {
     if (u.profile === "default" || !u.profile) { skipped++; continue; }
     const old = byName.get(u.name);
     const plan = mapPlan(u.profile);
-    const seen = activeSet.has(u.name);
+    const info = activeInfo.get(u.name);
+    const seen = !!info;
+    const activeMac = info?.mac && /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(info.mac) ? info.mac : null;
+    const idleSec = info?.idle ? routerSeconds(info.idle) : null;
     const commentExpiry = parseMikhmonExpiry(u.comment);
     const oldUsed = !!old?.used || !!old?.first_login_at;
 
@@ -730,12 +763,14 @@ async function handleSync(req: Request): Promise<Response> {
       password: u.password,
       profile: u.profile,
       plan,
-      mac_address: u.mac || null,
+      mac_address: activeMac || u.mac || old?.mac_address || null,
       expires_at: used ? expires : null,
       status: expired ? "expired" : "active",
       used,
       first_login_at: used ? first : null,
-      last_seen: seen ? nowIso : (old?.last_seen ?? null),
+      last_seen: seen
+        ? (idleSec !== null ? new Date(now.getTime() - idleSec * 1000).toISOString() : nowIso)
+        : (old?.last_seen ?? null),
       disabled,
       comment: u.comment,
       updated_at: nowIso,

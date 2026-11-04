@@ -20,7 +20,11 @@
 :foreach a in=[/ip hotspot active find] do={
     :local au [/ip hotspot active get $a user]
     :if ([:len $au] > 0) do={
-        :set actLines ($actLines . "A|" . $au . "\n")
+        :local am  [/ip hotspot active get $a mac-address]
+        :local ai  [/ip hotspot active get $a address]
+        :local aup [/ip hotspot active get $a uptime]
+        :local aid [/ip hotspot active get $a idle-time]
+        :set actLines ($actLines . "A|" . $au . "|" . $am . "|" . $ai . "|" . $aup . "|" . $aid . "\n")
     }
 }
 

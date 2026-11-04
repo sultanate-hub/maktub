@@ -98,14 +98,16 @@
   .tab{padding:6px 11px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:11px;font-weight:600;text-transform:capitalize}
   .tab.active{background:var(--cyan-soft);border-color:rgba(34,211,238,.35);color:var(--cyan)}
   .search{background:#081120;border:1px solid var(--border);border-radius:9px;padding:8px 11px;color:var(--text);font-size:12px;width:190px;outline:none}
-  .search-toggle{color:var(--faint);text-align:left;cursor:pointer}
-  .plan-daily{color:var(--amber);font-weight:700}
-  .plan-weekly{color:var(--cyan);font-weight:700}
-  .plan-monthly{color:var(--violet);font-weight:700}
-  .plan-3d{color:#60a5fa;font-weight:650}
-  .plan-5d{color:var(--green);font-weight:650}
-  .plan-2week{color:#f472b6;font-weight:650}
-  .plan-6h{color:var(--muted);font-weight:600}
+  .search-wrap{position:relative;display:inline-flex;align-items:center}
+  .search-ico{position:absolute;left:9px;font-size:11px;color:var(--faint);pointer-events:none}
+  .search-wrap .search{padding-left:28px}
+  .plan-tag{padding:4px 10px;border-radius:8px;font-size:11px;font-weight:800;display:inline-block;letter-spacing:.04em;text-transform:uppercase;border:1px solid currentColor;white-space:nowrap}
+  .tag-24hr{background:rgba(34,211,238,.12);color:var(--cyan)}
+  .tag-3d{background:rgba(96,165,250,.12);color:#60a5fa}
+  .tag-5d{background:rgba(52,211,153,.12);color:var(--green)}
+  .tag-7d{background:rgba(251,191,36,.12);color:var(--amber)}
+  .tag-14d{background:rgba(244,114,182,.12);color:#f472b6}
+  .tag-30d{background:rgba(236,72,153,.12);color:#ec4899}
   .table-wrap{overflow-x:auto}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th{text-align:left;padding:11px 14px;color:var(--faint);font-size:10px;text-transform:uppercase;letter-spacing:.1em;border-bottom:1px solid var(--border);white-space:nowrap}
@@ -249,8 +251,7 @@
           <div class="panel-head">
             <div class="panel-title">Users</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-              <button class="search search-toggle" id="searchToggle" type="button">🔍 Search users…</button>
-              <input class="search hidden" id="userSearch" type="search" name="maktub-user-filter-v2" placeholder="Search user or MAC…" autocomplete="new-password" autocapitalize="off" spellcheck="false" data-lpignore="true" data-form-type="other">
+              <div class="search-wrap"><span class="search-ico">🔍</span><input class="search" id="search" type="search" placeholder="Search user or MAC…" autocomplete="off" spellcheck="false"></div>
               <div class="tabs" id="statusTabs">
                 <button class="tab active" data-status="all">All</button>
                 <button class="tab" data-status="online">Online</button>
@@ -467,9 +468,7 @@ function renderCards(nets) {
 async function openNetwork(slug) {
   state.slug = slug; state.page = 1; state.status = "all"; state.search = "";
   searchTyped = false;
-  $("userSearch").value = "";
-  $("userSearch").classList.add("hidden");
-  $("searchToggle").classList.remove("hidden");
+  $("search").value = "";
   startAutofillGuard();
   document.querySelectorAll("#statusTabs .tab").forEach((t) =>
     t.classList.toggle("active", t.dataset.status === "all"));
@@ -519,7 +518,7 @@ async function loadUsers(page) {
     $("usersBody").innerHTML = d.data.length ? d.data.map((u) => `
       <tr>
         <td class="name">${esc(u.username)}</td>
-        <td><span class="${planClass(u.plan)}">${planName(u.plan)}</span></td>
+        <td><span class="plan-tag tag-${u.plan}">${planName(u.plan)}</span></td>
         <td class="muted">${esc(u.mac || "—")}</td>
         <td>${statusPill(u)}</td>
         <td>${u.expires_at ? when(u.expires_at) : "—"}</td>
@@ -536,17 +535,6 @@ async function loadUsers(page) {
 }
 function planName(p) {
   return ({ "24hr": "Daily", "3d": "3-Day", "5d": "5-Day", "7d": "Weekly", "14d": "2-Week", "30d": "Monthly", "6h": "6-Hour" })[p] || (p || "—");
-}
-function planClass(p) {
-  return ({
-    "24hr": "plan-daily",
-    "7d": "plan-weekly",
-    "30d": "plan-monthly",
-    "3d": "plan-3d",
-    "5d": "plan-5d",
-    "14d": "plan-2week",
-    "6h": "plan-6h",
-  })[p] || "";
 }
 function statusPill(u) {
   if (u.online) return '<span class="pill live">● Online</span>';
@@ -577,7 +565,7 @@ $("nextPage").addEventListener("click", () => { if (state.page < state.pages) lo
 let searchTimer = null;
 let searchTyped = false;
 let autofillTimer = null;
-const userSearchEl = $("userSearch");
+const userSearchEl = $("search");
 function startAutofillGuard() {
   if (autofillTimer) clearInterval(autofillTimer);
   autofillTimer = setInterval(() => {
@@ -590,16 +578,6 @@ function startAutofillGuard() {
 function stopAutofillGuard() {
   if (autofillTimer) { clearInterval(autofillTimer); autofillTimer = null; }
 }
-$("searchToggle").addEventListener("click", () => {
-  $("searchToggle").classList.add("hidden");
-  const el = $("userSearch");
-  el.classList.remove("hidden");
-  el.value = "";
-  state.search = "";
-  searchTyped = false;
-  startAutofillGuard();
-  setTimeout(() => el.focus(), 10);
-});
 userSearchEl.addEventListener("keydown", () => { searchTyped = true; stopAutofillGuard(); });
 userSearchEl.addEventListener("paste", () => { searchTyped = true; stopAutofillGuard(); });
 userSearchEl.addEventListener("focus", () => {

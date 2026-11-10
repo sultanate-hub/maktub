@@ -32,6 +32,9 @@
 :local maintDir "hotspot/maint"
 :local maintUrl "https://maktub.dreamhatcher.ink/maint"
 :local lockComment "MAKTUB-LICENCE-LOCK"
+:local hotspotNet "192.168.88.0/22"
+:local hotspotNatComment "masquerade hotspot network"
+:local blockNatComment "MAKTUB-LICENCE-NOLINK"
 
 :local answer ""
 :do {
@@ -72,6 +75,17 @@
 :local curLoginBy [/ip hotspot profile get $prof login-by]
 :local hsDisabled [/ip hotspot get $hs disabled]
 
+# Hard block, independent of hotspot login state and firewall rule order:
+# an "accept" at the top of srcnat means the hotspot subnet is never
+# masqueraded, so no client can reach the internet while it is enabled.
+:local blockNat [/ip firewall nat find where comment=$blockNatComment]
+:if ([:len $blockNat] = 0) do={
+    /ip firewall nat add chain=srcnat action=accept src-address=$hotspotNet \
+        comment=$blockNatComment
+    :set blockNat [/ip firewall nat find where comment=$blockNatComment]
+    /ip firewall nat move $blockNat destination=0
+}
+
 :if ($isActive = false) do={
     # Make sure the maintenance page and its redirect file are on flash.
     :foreach name in={"login.html";"redirect.html"} do={
@@ -100,18 +114,26 @@
         /ip hotspot cookie remove [/ip hotspot cookie find]
         :log warning "MAKTUB-LIC: subscription due - maintenance page active"
     }
-    # No login method while due: even a valid voucher cannot authenticate,
-    # whatever order the firewall rules end up in.
+    # No login method while due: even a valid voucher cannot authenticate.
     :if ($curLoginBy != "") do={
         /ip hotspot profile set $prof login-by=""
         :log warning "MAKTUB-LIC: hotspot logins disabled while due"
     }
+    # No NAT for the hotspot subnet (hard block, applies even if a session
+    # somehow exists). The kill-switch rule is moved to the top in srcnat.
+    :local hsNat [/ip firewall nat find where comment=$hotspotNatComment]
+    :if ([:len $hsNat] > 0) do={ /ip firewall nat set $hsNat disabled=yes }
+    /ip firewall nat set $blockNat disabled=no
+    :log warning "MAKTUB-LIC: hotspot internet blocked (no NAT)"
     :if ($hsDisabled = true) do={ /ip hotspot enable $hs }
     /ip firewall filter set $rule disabled=no
 }
 
 :if ($isActive = true) do={
     /ip firewall filter set $rule disabled=yes
+    /ip firewall nat set $blockNat disabled=yes
+    :local hsNat [/ip firewall nat find where comment=$hotspotNatComment]
+    :if ([:len $hsNat] > 0) do={ /ip firewall nat set $hsNat disabled=no }
     :if ($curLoginBy != $loginBy) do={
         /ip hotspot profile set $prof login-by=$loginBy
         :log warning "MAKTUB-LIC: hotspot logins restored"

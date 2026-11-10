@@ -1,23 +1,35 @@
 # =====================================================================
-# Maktub — licence enforcement (no grace period)
+# Maktub - licence enforcement (no grace period) with maintenance page
 # ---------------------------------------------------------------------
-# Polls the licence endpoint once a minute. If the owner's subscription
-# is due, the hotspot server is disabled -> all users are locked out.
-# When the licence is paid, it is enabled again.
+# Polls the licence endpoint once a minute.
+#
+#   licence due  -> clients get the maintenance page with the support
+#                   numbers, and ALL browsing is blocked. Nobody can log
+#                   in or use the hotspot until the licence is renewed.
+#   licence paid -> the normal login page is restored and the block is
+#                   removed automatically.
 #
 # FAIL-OPEN on network errors: a cloud outage never locks the network.
 # Only an explicit "active":false from the server locks it.
 #
 # INSTALL (per router):
-#   1. Edit apiKey and hotspotServer below.
+#   1. Edit apiKey below (the network key printed by tools/add-network.js).
 #   2. Save as script "maktub-licence" and run once.
 #   3. /system scheduler add name=maktub-licence interval=1m \
 #        on-event="/system script run maktub-licence"
+#
+# The maintenance page is downloaded automatically to
+# hotspot/maint/login.html (the folder is created by /tool fetch).
 # =====================================================================
 
 :local apiKey "REPLACE_WITH_NETWORK_API_KEY"
 :local apiUrl "https://zmolotveyvkplfrgrqqw.supabase.co/functions/v1/maktub/api/licence"
 :local hotspotServer "hs-bridge-LAN"
+:local hotspotProfile "hs-profile"
+:local loginDir "hotspot"
+:local maintDir "hotspot/maint"
+:local maintUrl "https://maktub.dreamhatcher.ink/maint/login.html"
+:local lockComment "MAKTUB-LICENCE-LOCK"
 
 :local answer ""
 :do {
@@ -39,13 +51,57 @@
     :log error "MAKTUB-LIC: hotspot server not found: $hotspotServer"
     :return ""
 }
-:local disabled [/ip hotspot get $hs disabled]
-
-:if (($isActive = false) and ($disabled = false)) do={
-    /ip hotspot disable $hs
-    :log warning "MAKTUB-LIC: subscription due - hotspot disabled, all users locked out"
+:local prof [/ip hotspot profile find name=$hotspotProfile]
+:if ([:len $prof] = 0) do={
+    :log error "MAKTUB-LIC: hotspot profile not found: $hotspotProfile"
+    :return ""
 }
-:if (($isActive = true) and ($disabled = true)) do={
-    /ip hotspot enable $hs
-    :log warning "MAKTUB-LIC: subscription active - hotspot enabled"
+
+# Lock rule: drops forwarded traffic from the hotspot LAN, so the portal
+# (traffic to the router) still loads but no client can browse.
+:local rule [/ip firewall filter find where comment=$lockComment]
+:if ([:len $rule] = 0) do={
+    /ip firewall filter add chain=forward in-interface=bridge-LAN action=drop \
+        comment=$lockComment
+    :set rule [/ip firewall filter find where comment=$lockComment]
+}
+
+:local curDir [/ip hotspot profile get $prof html-directory]
+:local hsDisabled [/ip hotspot get $hs disabled]
+
+:if ($isActive = false) do={
+    # Make sure the maintenance page is on flash (fetched once).
+    :local page [/file find name=($maintDir . "/login.html")]
+    :local size 0
+    :if ([:len $page] > 0) do={ :set size [/file get $page size] }
+    :if ($size < 1000) do={
+        :do {
+            /tool fetch url=$maintUrl mode=https check-certificate=no \
+                dst-path=($maintDir . "/login.html")
+            :log info "MAKTUB-LIC: maintenance page downloaded"
+        } on-error={
+            :log warning "MAKTUB-LIC: could not download the maintenance page"
+        }
+        :set page [/file find name=($maintDir . "/login.html")]
+        :if ([:len $page] > 0) do={ :set size [/file get $page size] }
+    }
+    # Never swap to an empty page - keep the login page if the download failed.
+    :if (($size >= 1000) and ($curDir != $maintDir)) do={
+        /ip hotspot profile set $prof html-directory=$maintDir
+        # Kick every session so devices actually land on the maintenance page.
+        /ip hotspot active remove [/ip hotspot active find]
+        /ip hotspot cookie remove [/ip hotspot cookie find]
+        :log warning "MAKTUB-LIC: subscription due - maintenance page active"
+    }
+    :if ($hsDisabled = true) do={ /ip hotspot enable $hs }
+    /ip firewall filter set $rule disabled=no
+}
+
+:if ($isActive = true) do={
+    /ip firewall filter set $rule disabled=yes
+    :if ($curDir != $loginDir) do={
+        /ip hotspot profile set $prof html-directory=$loginDir
+        :log warning "MAKTUB-LIC: subscription active - normal login restored"
+    }
+    :if ($hsDisabled = true) do={ /ip hotspot enable $hs }
 }

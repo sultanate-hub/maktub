@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+<meta http-equiv="pragma" content="no-cache" />
+<meta http-equiv="expires" content="-1" />
+<meta http-equiv="refresh" content="120" />
+<title>Maktub Enterprise - Maintenance</title>
+<style>
+  :root{
+    --primary:#0066ff; --accent:#00d4ff;
+    --bg-dark:#06091a; --card:rgba(95,130,195,0.24);
+    --text:#f0f4ff; --muted:#7b8db5; --border:rgba(150,180,230,0.30);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; padding:20px;
+    font-family:'Segoe UI',Roboto,sans-serif; color:var(--text);
+    background:
+      radial-gradient(900px 500px at 15% 0%, rgba(0,102,255,0.28), transparent 60%),
+      radial-gradient(700px 500px at 90% 100%, rgba(0,212,255,0.16), transparent 60%),
+      var(--bg-dark);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .card{
+    width:100%; max-width:380px; text-align:center;
+    background:var(--card); border:1px solid var(--border); border-radius:20px;
+    padding:32px 26px 26px; box-shadow:0 20px 50px rgba(0,0,0,0.35);
+    backdrop-filter:blur(15px); -webkit-backdrop-filter:blur(15px);
+  }
+  .brand{font-size:13px; letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:22px}
+  .brand b{color:var(--text); letter-spacing:4px}
+  .icon{
+    width:64px; height:64px; margin:0 auto 18px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; font-size:30px;
+    background:linear-gradient(135deg, rgba(0,102,255,.35), rgba(0,212,255,.18));
+    border:1px solid rgba(0,212,255,.35);
+  }
+  h1{font-size:21px; margin:0 0 10px; letter-spacing:.2px}
+  p{font-size:13.5px; line-height:1.65; color:#c3cfe6; margin:0 0 6px}
+  .rule{height:1px; background:var(--border); margin:22px 0 16px}
+  .label{font-size:11px; letter-spacing:1.2px; text-transform:uppercase; color:var(--muted); margin-bottom:12px}
+  .phones{display:flex; flex-direction:column; gap:10px}
+  .phone{
+    display:block; text-decoration:none; color:#fff; font-weight:700; font-size:17px;
+    padding:12px 14px; border-radius:12px; letter-spacing:.5px;
+    background:linear-gradient(90deg, rgba(0,102,255,.85), rgba(0,212,255,.75));
+    box-shadow:0 8px 18px rgba(0,102,255,.22);
+  }
+  .phone small{display:block; font-weight:400; font-size:10.5px; letter-spacing:1px; opacity:.85; margin-top:3px}
+  .note{font-size:11.5px; color:var(--muted); margin-top:18px; line-height:1.6}
+  .footer{margin-top:26px; font-size:10px; letter-spacing:1.5px; color:#8fa3c8; text-align:center}
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">MAKTUB <b>ENTERPRISE</b></div>
+    <div class="icon">&#9881;</div>
+    <h1>Network maintenance</h1>
+    <p>Internet service on this network is temporarily unavailable while we carry out maintenance.</p>
+    <p>We are working on it and normal service will return shortly.</p>
+
+    <div class="rule"></div>
+    <div class="label">For assistance call</div>
+    <div class="phones">
+      <a class="phone" href="tel:08086535645">0808 653 5645<small>CLICK TO CALL</small></a>
+      <a class="phone" href="tel:08032909040">0803 290 9040<small>CLICK TO CALL</small></a>
+    </div>
+    <div class="note">Please keep this page open or reconnect in a few minutes.</div>
+  </div>
+  <div class="footer">POWERED BY DREAM HATCHER TECH</div>
+</body>
+</html>

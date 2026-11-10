@@ -331,8 +331,14 @@ function toast(msg) {
   setTimeout(() => t.classList.remove("show"), 2800);
 }
 function show(id) {
-  ["loginView", "payView", "appView"].forEach((v) => $(v).classList.add("hidden"));
-  $(id).classList.remove("hidden");
+  // The login view may already have been removed (pay gate / after sign-in),
+  // so tolerate a missing view instead of throwing and leaving a blank page.
+  ["loginView", "payView", "appView"].forEach((v) => {
+    const el = $(v);
+    if (el) el.classList.add("hidden");
+  });
+  const target = $(id);
+  if (target) target.classList.remove("hidden");
 }
 function showLogin() {
   sessionStorage.removeItem("maktub_sid");
@@ -358,8 +364,8 @@ function showPay(data, canBack = false) {
     "<div><span>Billing date</span><span>10th of every month</span></div>" +
     "<div><span>Grace period</span><span>None</span></div>";
   $("payBack").classList.toggle("hidden", !canBack);
-  document.getElementById("loginView")?.remove();
   show("payView");
+  document.getElementById("loginView")?.remove();
 }
 
 async function api(path, opts = {}) {
@@ -402,7 +408,7 @@ $("logoutBtn").addEventListener("click", async () => {
 $("payLogout").addEventListener("click", () => { showLogin(); });
 
 /* ---------- boot / cards ---------- */
-async function boot() {
+async function boot(opts = {}) {
   const d = await api("/api/networks");
   state.networks = d.networks; state.tenant = d.tenant;
   $("tenantLine").textContent = d.tenant.network_count + " networks · till " + when(d.tenant.paid_until).split(",")[0];
@@ -411,6 +417,17 @@ async function boot() {
     " · licence active until " + when(d.tenant.paid_until);
   const due = !d.tenant || d.tenant.status !== "active" ||
     new Date(d.tenant.paid_until).getTime() <= Date.now();
+  // A due licence must land on the pay screen first - never the dashboard and
+  // never a blank page. Only an explicit "back" (opts.allowDue) skips this.
+  if (due && !opts.allowDue) {
+    showPay({
+      active: false,
+      paid_until: d.tenant.paid_until,
+      amount_due: d.tenant.amount_due,
+      network_count: d.tenant.network_count,
+    }, true);
+    return;
+  }
   $("dueBanner").classList.toggle("hidden", !due);
   if (due) {
     $("dueText").textContent = "— " + money(d.tenant.amount_due) +
@@ -631,7 +648,7 @@ $("duePayBtn").addEventListener("click", async () => {
     showPay(s, true);
   } catch (ex) { toast(ex.message); }
 });
-$("payBack").addEventListener("click", () => { boot().catch(() => {}); });
+$("payBack").addEventListener("click", () => { boot({ allowDue: true }).catch(() => {}); });
 
 /* ---------- password ---------- */
 $("pwBtn").addEventListener("click", () => { $("pwModal").classList.remove("hidden"); $("pwErr").textContent = ""; });

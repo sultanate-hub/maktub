@@ -28,7 +28,7 @@
 :local hotspotProfile "hs-profile"
 :local loginDir "hotspot"
 :local maintDir "hotspot/maint"
-:local maintUrl "https://maktub.dreamhatcher.ink/maint/login.html"
+:local maintUrl "https://maktub.dreamhatcher.ink/maint"
 :local lockComment "MAKTUB-LICENCE-LOCK"
 
 :local answer ""
@@ -70,23 +70,27 @@
 :local hsDisabled [/ip hotspot get $hs disabled]
 
 :if ($isActive = false) do={
-    # Make sure the maintenance page is on flash (fetched once).
-    :local page [/file find name=($maintDir . "/login.html")]
-    :local size 0
-    :if ([:len $page] > 0) do={ :set size [/file get $page size] }
-    :if ($size < 1000) do={
-        :do {
-            /tool fetch url=$maintUrl mode=https check-certificate=no \
-                dst-path=($maintDir . "/login.html")
-            :log info "MAKTUB-LIC: maintenance page downloaded"
-        } on-error={
-            :log warning "MAKTUB-LIC: could not download the maintenance page"
+    # Make sure the maintenance page and its redirect file are on flash.
+    :foreach name in={"login.html";"redirect.html"} do={
+        :local path ($maintDir . "/" . $name)
+        :local file [/file find name=$path]
+        :local size 0
+        :if ([:len $file] > 0) do={ :set size [/file get $file size] }
+        :if ($size < 50) do={
+            :do {
+                /tool fetch url=($maintUrl . "/" . $name) mode=https check-certificate=no \
+                    dst-path=$path
+                :log info ("MAKTUB-LIC: downloaded " . $name)
+            } on-error={
+                :log warning ("MAKTUB-LIC: could not download " . $name)
+            }
         }
-        :set page [/file find name=($maintDir . "/login.html")]
-        :if ([:len $page] > 0) do={ :set size [/file get $page size] }
     }
+    :local page [/file find name=($maintDir . "/login.html")]
+    :local pageSize 0
+    :if ([:len $page] > 0) do={ :set pageSize [/file get $page size] }
     # Never swap to an empty page - keep the login page if the download failed.
-    :if (($size >= 1000) and ($curDir != $maintDir)) do={
+    :if (($pageSize >= 1000) and ($curDir != $maintDir)) do={
         /ip hotspot profile set $prof html-directory=$maintDir
         # Kick every session so devices actually land on the maintenance page.
         /ip hotspot active remove [/ip hotspot active find]

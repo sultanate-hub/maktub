@@ -408,7 +408,7 @@ $("logoutBtn").addEventListener("click", async () => {
 $("payLogout").addEventListener("click", () => { showLogin(); });
 
 /* ---------- boot / cards ---------- */
-async function boot(opts = {}) {
+async function boot() {
   const d = await api("/api/networks");
   state.networks = d.networks; state.tenant = d.tenant;
   $("tenantLine").textContent = d.tenant.network_count + " networks · till " + when(d.tenant.paid_until).split(",")[0];
@@ -417,17 +417,10 @@ async function boot(opts = {}) {
     " · licence active until " + when(d.tenant.paid_until);
   const due = !d.tenant || d.tenant.status !== "active" ||
     new Date(d.tenant.paid_until).getTime() <= Date.now();
-  // A due licence must land on the pay screen first - never the dashboard and
-  // never a blank page. Only an explicit "back" (opts.allowDue) skips this.
-  if (due && !opts.allowDue) {
-    showPay({
-      active: false,
-      paid_until: d.tenant.paid_until,
-      amount_due: d.tenant.amount_due,
-      network_count: d.tenant.network_count,
-    }, true);
-    return;
-  }
+  // Reaching this point means the API let the session through: the licence is
+  // active, or this is the superadmin (who may work while the licence is due).
+  // The ordinary admin never gets here - the API answers 402 and api() shows
+  // the pay screen instead, so a due licence can never open the dashboard.
   $("dueBanner").classList.toggle("hidden", !due);
   if (due) {
     $("dueText").textContent = "— " + money(d.tenant.amount_due) +
@@ -648,7 +641,7 @@ $("duePayBtn").addEventListener("click", async () => {
     showPay(s, true);
   } catch (ex) { toast(ex.message); }
 });
-$("payBack").addEventListener("click", () => { boot({ allowDue: true }).catch(() => {}); });
+$("payBack").addEventListener("click", () => { boot().catch(() => {}); });
 
 /* ---------- password ---------- */
 $("pwBtn").addEventListener("click", () => { $("pwModal").classList.remove("hidden"); $("pwErr").textContent = ""; });

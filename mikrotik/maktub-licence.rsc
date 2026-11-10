@@ -4,10 +4,11 @@
 # Polls the licence endpoint once a minute.
 #
 #   licence due  -> clients get the maintenance page with the support
-#                   numbers, and ALL browsing is blocked. Nobody can log
-#                   in or use the hotspot until the licence is renewed.
-#   licence paid -> the normal login page is restored and the block is
-#                   removed automatically.
+#                   numbers, hotspot logins are switched off and browsing
+#                   is blocked. Nobody can log in or use the hotspot until
+#                   the licence is renewed.
+#   licence paid -> the normal login page and login methods are restored
+#                   and the block is removed automatically.
 #
 # FAIL-OPEN on network errors: a cloud outage never locks the network.
 # Only an explicit "active":false from the server locks it.
@@ -26,6 +27,7 @@
 :local apiUrl "https://zmolotveyvkplfrgrqqw.supabase.co/functions/v1/maktub/api/licence"
 :local hotspotServer "hs-bridge-LAN"
 :local hotspotProfile "hs-profile"
+:local loginBy "cookie,http-chap"
 :local loginDir "hotspot"
 :local maintDir "hotspot/maint"
 :local maintUrl "https://maktub.dreamhatcher.ink/maint"
@@ -67,6 +69,7 @@
 }
 
 :local curDir [/ip hotspot profile get $prof html-directory]
+:local curLoginBy [/ip hotspot profile get $prof login-by]
 :local hsDisabled [/ip hotspot get $hs disabled]
 
 :if ($isActive = false) do={
@@ -97,12 +100,22 @@
         /ip hotspot cookie remove [/ip hotspot cookie find]
         :log warning "MAKTUB-LIC: subscription due - maintenance page active"
     }
+    # No login method while due: even a valid voucher cannot authenticate,
+    # whatever order the firewall rules end up in.
+    :if ($curLoginBy != "") do={
+        /ip hotspot profile set $prof login-by=""
+        :log warning "MAKTUB-LIC: hotspot logins disabled while due"
+    }
     :if ($hsDisabled = true) do={ /ip hotspot enable $hs }
     /ip firewall filter set $rule disabled=no
 }
 
 :if ($isActive = true) do={
     /ip firewall filter set $rule disabled=yes
+    :if ($curLoginBy != $loginBy) do={
+        /ip hotspot profile set $prof login-by=$loginBy
+        :log warning "MAKTUB-LIC: hotspot logins restored"
+    }
     :if ($curDir != $loginDir) do={
         /ip hotspot profile set $prof html-directory=$loginDir
         :log warning "MAKTUB-LIC: subscription active - normal login restored"
